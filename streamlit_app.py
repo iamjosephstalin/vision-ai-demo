@@ -297,6 +297,7 @@ if st.button("Process Images") and uploaded_files:
                 text1 = ocr_image(client, preprocessed, mode="document")
                 
                 # OCR Pass 2 (High Contrast)
+                hc_img = make_high_contrast(preprocessed)
                 text2 = ocr_image(client, hc_img, mode="document")
 
                 # OCR Pass 3 (Casting / Embossed Optimization)
