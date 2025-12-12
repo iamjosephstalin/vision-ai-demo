@@ -8,6 +8,8 @@ from google.cloud import vision_v1
 from google.oauth2 import service_account
 import io
 import pandas as pd
+import cv2
+import numpy as np
 from dotenv import load_dotenv
 
 # Load env vars from .env if present (for local dev)
@@ -93,6 +95,36 @@ def make_high_contrast(img: Image.Image) -> Image.Image:
     w, h = g.size
     g = g.resize((w * 2, h * 2))
     return g
+
+def preprocess_for_casting(pil_img: Image.Image) -> Image.Image:
+    """
+    Optimized for embossed metal letters (casting marks).
+    Uses CLAHE + Adaptive Thresholding to find 3D edges.
+    """
+    # Convert PIL to CV2 (RGB -> BGR)
+    img_np = np.array(pil_img)
+    img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+    
+    # 1. Grayscale
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    
+    # 2. CLAHE (Contrast Limited Adaptive Histogram Equalization)
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8,8))
+    enhanced = clahe.apply(gray)
+    
+    # 3. Adaptive Thresholding (Gaussian)
+    # This is key for casting: compares pixel to neighbors (local contrast)
+    thresh = cv2.adaptiveThreshold(
+        enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+        cv2.THRESH_BINARY, 19, 5  # blockSize 19, C 5
+    )
+    
+    # 4. Denoise slightly (Morphological Open)
+    kernel = np.ones((2,2), np.uint8)
+    clean = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
+    
+    # Convert back to PIL
+    return Image.fromarray(clean)
 
 def ocr_image(client, pil_img: Image.Image, mode="document") -> str:
     """Runs Vision API on the image."""
@@ -265,11 +297,14 @@ if st.button("Process Images") and uploaded_files:
                 text1 = ocr_image(client, preprocessed, mode="document")
                 
                 # OCR Pass 2 (High Contrast)
-                hc_img = make_high_contrast(preprocessed)
                 text2 = ocr_image(client, hc_img, mode="document")
+
+                # OCR Pass 3 (Casting / Embossed Optimization)
+                casting_img = preprocess_for_casting(original_img)
+                text3 = ocr_image(client, casting_img, mode="text") # 'text' mode often better for sparse casting words
                 
                 # Combine & Parse
-                raw_text = (text1 or "") + "\n" + (text2 or "")
+                raw_text = (text1 or "") + "\n" + (text2 or "") + "\n" + (text3 or "")
                 
                 # Collect valid lines
                 all_lines = normalize_lines(raw_text)

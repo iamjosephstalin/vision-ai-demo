@@ -1,5 +1,7 @@
-streamlit==1.40.0
-google-cloud-vision==3.4.0
-Pillow==11.0.0
-python-dotenv==1.0.0
-pandas==2.0.0
+streamlit
+google-cloud-vision
+Pillow
+python-dotenv
+pandas
+opencv-python-headless
+numpy
